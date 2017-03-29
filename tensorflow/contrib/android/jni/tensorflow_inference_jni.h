@@ -46,7 +46,8 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model);
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
-    JNIEnv* env, jobject thiz, jobjectArray output_name_strings);
+    JNIEnv* env, jobject thiz, jobjectArray output_name_strings, 
+    jobjectArray target_node_name_strings);
 
 JNIEXPORT void JNICALL TENSORFLOW_METHOD(enableStatLogging)(
     JNIEnv* env, jobject thiz, jboolean enableStatLogging);

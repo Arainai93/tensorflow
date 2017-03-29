@@ -74,7 +74,14 @@ public class TensorFlowInferenceInterface {
    * @param outputNames A list of output nodes which should be filled by the inference pass.
    * @return The native status returned by TensorFlow. 0 indicates success.
    */
-  public native int runInference(String[] outputNames);
+  public int runInference(String[] outputNames) {
+    return runInference(outputNames, new String[] {});
+  }
+
+  /**
+   * An overloaded version of runInference that allows supplying targetNodeNames as well
+   */
+  public native int runInference(String[] outputNames, String[] targetNodeNames);
 
   /**
    * Whether to collect and log stats to logcat during inference via StepStats and StatSummarizer.
