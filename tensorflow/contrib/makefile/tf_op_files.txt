@@ -119,6 +119,7 @@ tensorflow/core/kernels/cwise_op_select.cc
 tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_reciprocal.cc
 tensorflow/core/kernels/cwise_op_neg.cc
+tensorflow/core/kernels/cwise_op_pow.cc
 tensorflow/core/kernels/cwise_op_mul_2.cc
 tensorflow/core/kernels/cwise_op_mul_1.cc
 tensorflow/core/kernels/cwise_op_minimum.cc
