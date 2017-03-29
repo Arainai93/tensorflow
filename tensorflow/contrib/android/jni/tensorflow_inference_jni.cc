@@ -176,7 +176,8 @@ static tensorflow::Tensor* GetTensor(JNIEnv* env, jobject thiz,
 }
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
-    JNIEnv* env, jobject thiz, jobjectArray output_name_strings) {
+    JNIEnv* env, jobject thiz, jobjectArray output_name_strings, 
+    jobjectArray target_node_name_strings) {
   SessionVariables* vars = GetSessionVars(env, thiz);
 
   // Add the requested outputs to the output list.
@@ -186,6 +187,14 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
         (jstring)(env->GetObjectArrayElement(output_name_strings, i));
     std::string output_name = GetString(env, java_string);
     vars->output_tensor_names.push_back(output_name);
+  }
+
+  std::vector<std::string> target_node_names;
+  for (int i = 0; i < env->GetArrayLength(target_node_name_strings); i++) {
+    jstring java_string =
+        (jstring)(env->GetObjectArrayElement(target_node_name_strings, i));
+    std::string node_name = GetString(env, java_string);
+    target_node_names.push_back(node_name);
   }
 
   ++(vars->num_runs);
@@ -207,7 +216,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
     RunMetadata run_metadata;
 
     s = vars->session->Run(run_options, input_tensors,
-                           vars->output_tensor_names, {},
+                           vars->output_tensor_names, target_node_names,
                            &(vars->output_tensors), &run_metadata);
 
     assert(run_metadata.has_step_stats());
@@ -218,8 +227,8 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
     // getStatString().
     vars->summarizer->PrintStepStats();
   } else {
-    s = vars->session->Run(input_tensors, vars->output_tensor_names, {},
-                           &(vars->output_tensors));
+    s = vars->session->Run(input_tensors, vars->output_tensor_names, 
+                           target_node_names, &(vars->output_tensors));
   }
 
   end_time = CurrentWallTimeUs();
