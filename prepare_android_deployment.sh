@@ -35,6 +35,7 @@ do
 
 	lib_dir=$DEPLOY_DIR/prebuiltLibs/$cpu
 	mkdir -p $lib_dir
+	chmod -R u+w $lib_dir # to make sure we can override existing files
 	cp bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so $lib_dir
 done
 
@@ -44,4 +45,5 @@ retval=$?
 if [ $retval -ne 0 ]; then
 	exit $retval
 fi
+chmod -R u+w $DEPLOY_DIR # to make sure we can override previous jar
 cp bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar $DEPLOY_DIR
