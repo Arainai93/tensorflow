@@ -222,4 +222,7 @@ tensorflow/core/ops/array_grad.cc
 tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
+tensorflow/contrib/rnn/ops/lstm_ops.cc
+tensorflow/contrib/rnn/kernels/lstm_ops.cc
+tensorflow/contrib/rnn/kernels/blas_gemm.cc
 
