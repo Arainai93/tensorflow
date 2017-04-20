@@ -3592,6 +3592,11 @@ filegroup(
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fused_batch_norm_op.cc",
+        "//tensorflow/contrib/rnn:ops/lstm_ops.cc",
+        "//tensorflow/contrib/rnn:kernels/lstm_ops.cc",
+        "//tensorflow/contrib/rnn:kernels/lstm_ops.h",
+        "//tensorflow/contrib/rnn:kernels/blas_gemm.cc",
+        "//tensorflow/contrib/rnn:kernels/blas_gemm.h",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ] + select({

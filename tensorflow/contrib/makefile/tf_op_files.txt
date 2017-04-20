@@ -213,3 +213,6 @@ tensorflow/core/ops/control_flow_ops.cc
 tensorflow/core/ops/candidate_sampling_ops.cc
 tensorflow/core/ops/array_ops.cc
 tensorflow/core/ops/array_grad.cc
+tensorflow/contrib/rnn/ops/lstm_ops.cc
+tensorflow/contrib/rnn/kernels/lstm_ops.cc
+tensorflow/contrib/rnn/kernels/blas_gemm.cc
