@@ -116,7 +116,7 @@ public class TensorFlowInferenceInterface {
   /**
    * An overloaded version of runInference that allows supplying targetNodeNames as well
    */
-  public int runInference(String[] outputNames, String[] targetNodeNames);
+  public int runInference(String[] outputNames, String[] targetNodeNames) {
     // Release any Tensors from the previous runInference calls.
     closeFetches();
 
