@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/legacy_flags/convolution_thunk_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -34,6 +34,7 @@ using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
+using se::dnn::AlgorithmDesc;
 
 ConvolveScratchAllocator::ConvolveScratchAllocator(
     int device_ordinal, DeviceMemoryAllocator* memory_allocator)
@@ -125,7 +126,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   CHECK_LE(num_dimensions, 3);
   // cuDNN does not support 1D convolutions. We therefore express 1D
   // convolutions as 2D convolutions where the first spatial dimension is 1.
-  // This matches the behaviour of TF (see definition of conv1d in
+  // This matches the behavior of TF (see definition of conv1d in
   // tensorflow/python/ops/nn_ops.py).
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
@@ -141,8 +142,8 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   BatchDescriptor input_descriptor(effective_num_dimensions);
   input_descriptor.set_layout(DataLayout::kBatchDepthYX)
       .set_feature_map_count(
-          input_shape_.dimensions(dim_nums_.feature_dimension()))
-      .set_count(input_shape_.dimensions(dim_nums_.batch_dimension()));
+          input_shape_.dimensions(dim_nums_.input_feature_dimension()))
+      .set_count(input_shape_.dimensions(dim_nums_.input_batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {
     // Note that the dimensions are reversed. The same holds below.
     input_descriptor.set_spatial_dim(
@@ -176,8 +177,8 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   BatchDescriptor output_descriptor(effective_num_dimensions);
   output_descriptor.set_layout(DataLayout::kBatchDepthYX)
       .set_feature_map_count(
-          output_shape_.dimensions(dim_nums_.feature_dimension()))
-      .set_count(output_shape_.dimensions(dim_nums_.batch_dimension()));
+          output_shape_.dimensions(dim_nums_.output_feature_dimension()))
+      .set_count(output_shape_.dimensions(dim_nums_.output_batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {
     output_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),
@@ -252,24 +253,38 @@ tensorflow::Status ConvolutionThunk::Convolve(
       "Unable to launch convolution for thunk %p with type %s and algorithm "
       "(%lld, %lld)",
       this, ConvolutionKindToString(convolution_kind_).c_str(),
-      algorithm_config.algorithm(), algorithm_config.algorithm_no_scratch());
+      algorithm_config.algorithm().algo_id(),
+      algorithm_config.algorithm_no_scratch().algo_id());
 }
 
-std::vector<se::dnn::AlgorithmType> ConvolutionThunk::GetAlgorithms(
+std::vector<AlgorithmDesc> ConvolutionThunk::GetAlgorithms(
     se::StreamExecutor* stream_exec) const {
-  std::vector<se::dnn::AlgorithmType> algorithms;
+  std::vector<AlgorithmDesc> algorithms;
+  // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
+  // by default. Should send in conv parameters and enable it when
+  // ShouldIncludeWinogradNonfusedAlgo() returns true.
   switch (convolution_kind_) {
     case ConvolutionKind::kBackwardFilter:
-      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kBackwardInput:
-      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kForward:
-      CHECK(stream_exec->GetConvolveAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveAlgorithms(/*with_winograd_nonfused=*/false,
+                                               &algorithms));
       break;
   }
   return algorithms;
+}
+
+static string AlgorithmToString(const se::dnn::AlgorithmDesc& algo) {
+  if (algo.tensor_ops_enabled()) {
+    return tensorflow::strings::StrCat(algo.algo_id(), "+TC");
+  }
+  return tensorflow::strings::StrCat(algo.algo_id());
 }
 
 tensorflow::Status ConvolutionThunk::ConvolveWithTune(
@@ -281,10 +296,7 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const ConvolutionDescriptor& convolution_descriptor,
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // TODO(b/29126320): Try cudnn v5's new auto-tuner when it's rolled out.
-  legacy_flags::ConvolutionThunkFlags* flags =
-      legacy_flags::GetConvolutionThunkFlags();
-  if (flags->xla_gpu_autotune_convolution_algorithm &&
-      best_algorithm_.algorithm() == se::dnn::kDefaultAlgorithm) {
+  if (best_algorithm_.algorithm().is_default()) {
     // Auto-tuning either is disabled or only happens in the first run of this
     // function.
     VLOG(2) << "Profiling for best convolution algorithm used for "
@@ -293,11 +305,14 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
 
     se::dnn::ProfileResult best_result;
     se::dnn::ProfileResult best_result_without_scratch;
-    for (se::dnn::AlgorithmType algorithm : GetAlgorithms(stream->parent())) {
+    std::vector<AlgorithmDesc> algorithms = GetAlgorithms(stream->parent());
+    for (auto algorithm : algorithms) {
       ConvolveScratchAllocator scratch_allocator(
           buffer_allocations.device_ordinal(),
           buffer_allocations.memory_allocator());
       se::dnn::ProfileResult profile_result;
+      VLOG(3) << "Trying algorithm " << AlgorithmToString(algorithm)
+              << " for ConvolutionThunk: " << this;
       bool launch_ok =
           Convolve(input_descriptor, input_data, filter_descriptor, filter_data,
                    output_descriptor, output_data, convolution_descriptor,
@@ -305,6 +320,11 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
                    &scratch_allocator, &profile_result)
               .ok();
       if (launch_ok && profile_result.is_valid()) {
+        VLOG(3) << "Run of algorithm " << AlgorithmToString(algorithm)
+                << " for ConvolutionThunk " << this << " succeeded, taking "
+                << profile_result.elapsed_time_in_ms()
+                << "ms. (Best result: " << best_result.elapsed_time_in_ms()
+                << "ms)";
         if (profile_result.elapsed_time_in_ms() <
             best_result.elapsed_time_in_ms()) {
           best_result = profile_result;
@@ -314,6 +334,9 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
                 best_result_without_scratch.elapsed_time_in_ms()) {
           best_result_without_scratch = profile_result;
         }
+      } else {
+        VLOG(3) << "Run of algorithm " << AlgorithmToString(algorithm)
+                << " for ConvolutionThunk " << this << " failed.";
       }
     }
 
@@ -322,7 +345,7 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     } else {
       LOG(ERROR) << "No convolution algorithm works with profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm(se::dnn::kDefaultAlgorithm);
+      best_algorithm_.set_algorithm(AlgorithmDesc());
     }
 
     if (best_result_without_scratch.is_valid()) {
@@ -332,13 +355,14 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
       LOG(ERROR) << "No convolution algorithm without scratch works with "
                     "profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm_no_scratch(se::dnn::kDefaultAlgorithm);
+      best_algorithm_.set_algorithm_no_scratch(AlgorithmDesc());
     }
   }
 
   {
-    VLOG(2) << "Using convolution algorithm (" << best_algorithm_.algorithm()
-            << ", " << best_algorithm_.algorithm_no_scratch()
+    VLOG(2) << "Using convolution algorithm ("
+            << AlgorithmToString(best_algorithm_.algorithm()) << ", "
+            << AlgorithmToString(best_algorithm_.algorithm_no_scratch())
             << ") for ConvolutionThunk: " << this;
     ConvolveScratchAllocator scratch_allocator(
         buffer_allocations.device_ordinal(),
