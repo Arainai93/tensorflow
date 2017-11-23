@@ -4694,11 +4694,6 @@ filegroup(
         "fused_batch_norm_op.cc",
         "population_count_op.cc",
         "population_count_op.h",
-        "//tensorflow/contrib/rnn:ops/lstm_ops.cc",
-        "//tensorflow/contrib/rnn:kernels/lstm_ops.cc",
-        "//tensorflow/contrib/rnn:kernels/lstm_ops.h",
-        "//tensorflow/contrib/rnn:kernels/blas_gemm.cc",
-        "//tensorflow/contrib/rnn:kernels/blas_gemm.h",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ] + select({
