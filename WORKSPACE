@@ -24,8 +24,8 @@ check_version("0.4.2")
 # Uncomment and update the paths in these entries to build the Android demo.
 android_sdk_repository(
     name = "androidsdk",
-    api_level = 25,
-    build_tools_version = "25.0.1",
+    api_level = 26,
+    build_tools_version = "26.0.1",
     # Replace with path to Android SDK on your system
     path = __workspace_dir__ + "/android_sdk"
 )
